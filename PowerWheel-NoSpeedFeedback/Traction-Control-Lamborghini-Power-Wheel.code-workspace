@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "230220-151435-nodemcuv2",
+			"path": "../../../Users/Eric/Documents/PlatformIO/Projects/230220-151435-nodemcuv2"
+		},
+		{
+			"name": "ari-car",
+			"path": "../../ari-car"
+		},
+		{
+			"name": "esp8266_aricar",
+			"path": "esp8266_aricar"
+		}
+	],
+	"settings": {}
+}
