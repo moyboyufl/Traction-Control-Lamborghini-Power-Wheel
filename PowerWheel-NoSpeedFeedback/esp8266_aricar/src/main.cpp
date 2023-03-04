@@ -6,6 +6,13 @@
 
 #define EEPROM_KEY 33
 #define pedalAnalogPin (A0)
+//#define PEDAL_FWD_IN (D2)
+//#define PEDAL_REV_IN (D1)
+#define MOTOR_FWD_OUT (D5)
+#define MOTOR_FWD_LED_OUT (D6)
+#define MOTOR_REV_LED_OUT (D7)
+#define MOTOR_REV_OUT (D8)
+
 
 const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 4, 1);
@@ -24,24 +31,31 @@ const char* hostname = "espui";
 //GUI
 uint16_t status;
 uint16_t button1;
+uint16_t minDutyCycleSlider,maxDutyCycleSlider;
 uint16_t millisLabelId;
 uint16_t switchOne;
 
 //Motor Control
-int DutyCycle = 0;
+uint8_t DutyCycle = 0;
 uint8_t DC_STEP = 10;
-uint8_t MinDutyCycle = 30;
-uint8_t MaxDutyCycle = 70;
 
 //eeprom token
 uint8_t eepromKey = EEPROM_KEY;
+
+//EEPROM settings
+struct {
+    uint8_t DC_STEP = 10;
+    uint8_t MinDutyCycle = 30;
+    uint8_t MaxDutyCycle = 70;
+} settings;
 
 //setup task scheduler
 Task task5Hz(200, TASK_FOREVER, &task5HzCallback);
 Scheduler task;
 
 //Task Scheduler
-void task5HzCallback();
+void task5HzCallback()
+
 {
   DutyCycle += DC_STEP;
    
@@ -207,15 +221,14 @@ void otherSwitchExample(Control* sender, int value)
 void setup(void)
 {
   //get settings
-  EEPROM.begin(32);
+  EEPROM.begin(sizeof(eepromKey)+sizeof(settings));
   eepromKey = EEPROM.read(0);
   
   if(eepromKey != EEPROM_KEY)
   {
     eepromKey = EEPROM_KEY;
     EEPROM.write(0, eepromKey);
-    EEPROM.write(1, MinDutyCycle);
-    EEPROM.write(2, MaxDutyCycle);
+    EEPROM.put(1, settings);
     EEPROM.commit();
   }
   
