@@ -29,24 +29,29 @@ const char* password = "espui";
 const char* hostname = "espui";
 
 //GUI
-uint16_t status;
-uint16_t button1;
-uint16_t minDutyCycleSlider,maxDutyCycleSlider;
-uint16_t millisLabelId;
-uint16_t switchOne;
+//uint16_t status;
+//uint16_t button1;
+uint16_t minDutyCycleSliderID,maxDutyCycleSliderID, minPedalReadSliderID, maxPedalReadSliderID,
+    minPedalDeadbandSliderID, maxPedalDeadbandSliderID;
+uint16_t dutyCycleOutLabelId;
+uint16_t burnEEPROMswitchID;
 
 //Motor Control
+int pedalValue = 0;
 uint8_t DutyCycle = 0;
-uint8_t DC_STEP = 10;
 
 //eeprom token
 uint8_t eepromKey = EEPROM_KEY;
 
-//EEPROM settings
+// Default EEPROM settings if not changed
 struct {
-    uint8_t DC_STEP = 10;
-    uint8_t MinDutyCycle = 30;
-    uint8_t MaxDutyCycle = 70;
+    uint8_t DC_STEP = 10;       //  PWM motor output Duty Cycle increment in 0-1023 per 5Hz cycle (200ms)
+    uint8_t minDutyCycle = 0;   //  Min PWM motor output Duty Cycle 0-1023
+    uint8_t maxDutyCycle = 50;  //  Max PWM motor Duty Cycle 0-1023
+    uint8_t minPedalRead = 0;       // analogRead from pedal at idle 0-1023
+    uint8_t maxPedalRead = 1023;    // analogRead from pedal at full throttle 0-1023
+    uint8_t minPedalDeadband = 50;  // Deadband from min pedal reading to stay at idle
+    uint8_t maxPedalDeadband = 50;  // Deadband from max pedal reading to stay at full throttle
 } settings;
 
 //setup task scheduler
@@ -57,13 +62,30 @@ Scheduler task;
 void task5HzCallback()
 
 {
-  DutyCycle += DC_STEP;
-   
-  DutyCycle = _max(DutyCycle, MinDutyCycle);
-  DutyCycle = _min(DutyCycle, MaxDutyCycle);
+  pedalValue = analogRead(pedalAnalogPin);
 
-  analogWrite(MOTOR_REV_OUT,0);
-  analogWrite(MOTOR_FWD_OUT, map(DutyCycle, 0, 100, 0, 1023));
+  // map pedalValue from actual HW range of pedal plus deadbands to full 10 bit range
+  //     then constrain to within 10-bit value
+  pedalValue = constrain(map(pedalValue, (settings.minPedalRead + settings.minPedalDeadband),
+    (settings.maxPedalRead + settings.maxPedalDeadband), 0, 1023), 0, 1023);
+  
+  if (pedalValue > DutyCycle)
+  {
+     // Acceleration
+    DutyCycle += settings.DC_STEP;
+  }
+  else if (pedalValue < DutyCycle)
+  {
+    // Decelleration
+    DutyCycle -= settings.DC_STEP;
+  }
+
+
+  DutyCycle = constrain(DutyCycle, settings.minDutyCycle, settings.maxDutyCycle);
+  ESPUI.updateControlValue(dutyCycleOutLabelId, String(DutyCycle));
+
+  analogWrite(MOTOR_REV_OUT,0);     //  when one pin is PWMing the other needs to be low otherwise damage
+  analogWrite(MOTOR_FWD_OUT, DutyCycle);
 
   digitalWrite(MOTOR_FWD_LED_OUT, HIGH);
   digitalWrite(MOTOR_REV_LED_OUT, LOW);
@@ -104,28 +126,28 @@ void buttonCallback(Control* sender, int type)
     }
 }
 
-void buttonExample(Control* sender, int type, void* param)
-{
-    Serial.println(String("param: ") + String(int(param)));
-    switch (type)
-    {
-    case B_DOWN:
-        Serial.println("Status: Start");
-        ESPUI.updateControlValue(status, "Start");
+// void buttonExample(Control* sender, int type, void* param)
+// {
+//     Serial.println(String("param: ") + String(int(param)));
+//     switch (type)
+//     {
+//     case B_DOWN:
+//         Serial.println("Status: Start");
+//         ESPUI.updateControlValue(status, "Start");
 
-        ESPUI.getControl(button1)->color = ControlColor::Carrot;
-        ESPUI.updateControl(button1);
-        break;
+//         ESPUI.getControl(button1)->color = ControlColor::Carrot;
+//         ESPUI.updateControl(button1);
+//         break;
 
-    case B_UP:
-        Serial.println("Status: Stop");
-        ESPUI.updateControlValue(status, "Stop");
+//     case B_UP:
+//         Serial.println("Status: Stop");
+//         ESPUI.updateControlValue(status, "Stop");
 
-        ESPUI.getControl(button1)->color = ControlColor::Peterriver;
-        ESPUI.updateControl(button1);
-        break;
-    }
-}
+//         ESPUI.getControl(button1)->color = ControlColor::Peterriver;
+//         ESPUI.updateControl(button1);
+//         break;
+//     }
+// }
 
 void padExample(Control* sender, int value)
 {
@@ -232,8 +254,7 @@ void setup(void)
     EEPROM.commit();
   }
   
-  MinDutyCycle = EEPROM.read(1);
-  MaxDutyCycle = EEPROM.read(2);
+  EEPROM.get(1, settings); // load current EEPROM values into struct settings
   
   ESPUI.setVerbosity(Verbosity::VerboseJSON);
     Serial.begin(115200);
@@ -299,33 +320,44 @@ void setup(void)
     Serial.print("IP address: ");
     Serial.println(WiFi.getMode() == WIFI_AP ? WiFi.softAPIP() : WiFi.localIP());
 
-    status = ESPUI.addControl(ControlType::Label, "Status:", "Stop", ControlColor::Turquoise);
+    //  setup UI
+    // status = ESPUI.addControl(ControlType::Label, "Status:", "Stop", ControlColor::Turquoise);
 
-    uint16_t select1 = ESPUI.addControl(
-        ControlType::Select, "Select:", "", ControlColor::Alizarin, Control::noParent, &selectExample);
+    // uint16_t select1 = ESPUI.addControl(
+    //     ControlType::Select, "Select:", "", ControlColor::Alizarin, Control::noParent, &selectExample);
 
-    ESPUI.addControl(ControlType::Option, "Option1", "Opt1", ControlColor::Alizarin, select1);
-    ESPUI.addControl(ControlType::Option, "Option2", "Opt2", ControlColor::Alizarin, select1);
-    ESPUI.addControl(ControlType::Option, "Option3", "Opt3", ControlColor::Alizarin, select1);
+    // ESPUI.addControl(ControlType::Option, "Option1", "Opt1", ControlColor::Alizarin, select1);
+    // ESPUI.addControl(ControlType::Option, "Option2", "Opt2", ControlColor::Alizarin, select1);
+    // ESPUI.addControl(ControlType::Option, "Option3", "Opt3", ControlColor::Alizarin, select1);
 
-    ESPUI.addControl(
-        ControlType::Text, "Text Test:", "a Text Field", ControlColor::Alizarin, Control::noParent, &textCall);
+    // ESPUI.addControl(
+    //     ControlType::Text, "Text Test:", "a Text Field", ControlColor::Alizarin, Control::noParent, &textCall);
 
-    millisLabelId = ESPUI.addControl(ControlType::Label, "Millis:", "0", ControlColor::Emerald, Control::noParent);
-    button1 = ESPUI.addControl(
-        ControlType::Button, "Push Button", "Press", ControlColor::Peterriver, Control::noParent, &buttonCallback);
-    ESPUI.addControl(
-        ControlType::Button, "Other Button", "Press", ControlColor::Wetasphalt, Control::noParent, &buttonExample, (void*)19);
-    ESPUI.addControl(
-        ControlType::PadWithCenter, "Pad with center", "", ControlColor::Sunflower, Control::noParent, &padExample);
-    ESPUI.addControl(ControlType::Pad, "Pad without center", "", ControlColor::Carrot, Control::noParent, &padExample);
-    switchOne = ESPUI.addControl(
-        ControlType::Switcher, "Switch one", "", ControlColor::Alizarin, Control::noParent, &switchExample);
-    ESPUI.addControl(
-        ControlType::Switcher, "Switch two", "", ControlColor::None, Control::noParent, &otherSwitchExample);
-    ESPUI.addControl(ControlType::Slider, "Slider one", "30", ControlColor::Alizarin, Control::noParent, &slider);
-    ESPUI.addControl(ControlType::Slider, "Slider two", "100", ControlColor::Alizarin, Control::noParent, &slider);
-    ESPUI.addControl(ControlType::Number, "Number:", "50", ControlColor::Alizarin, Control::noParent, &numberCall);
+    dutyCycleOutLabelId = ESPUI.addControl(ControlType::Label, "Motor AO (0-1023):", "0", ControlColor::Emerald, Control::noParent);
+    // button1 = ESPUI.addControl(
+    //     ControlType::Button, "Push Button", "Press", ControlColor::Peterriver, Control::noParent, &buttonCallback);
+    // ESPUI.addControl(
+    //     ControlType::Button, "Other Button", "Press", ControlColor::Wetasphalt, Control::noParent, &buttonExample, (void*)19);
+    // ESPUI.addControl(
+    //     ControlType::PadWithCenter, "Pad with center", "", ControlColor::Sunflower, Control::noParent, &padExample);
+    // ESPUI.addControl(ControlType::Pad, "Pad without center", "", ControlColor::Carrot, Control::noParent, &padExample);
+    burnEEPROMswitchID = ESPUI.addControl(
+        ControlType::Switcher, "Burn EEPROM", "", ControlColor::Carrot, Control::noParent, &switchExample);
+    // ESPUI.addControl(
+    //     ControlType::Switcher, "Switch two", "", ControlColor::None, Control::noParent, &otherSwitchExample);
+    minDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Min Output Duty Cycle", "1023", ControlColor::Peterriver, Control::noParent, &slider);
+    maxDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Max Output Duty Cycle", "1023", ControlColor::Alizarin, Control::noParent, &slider);
+
+    minPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Reading", "1023", ControlColor::Peterriver, Control::noParent, &slider);
+    minPedalDeadbandSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Deadband", "1023", ControlColor::Peterriver, Control::noParent, &slider);
+
+    maxPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Max Pedal Reading", "1023", ControlColor::Alizarin, Control::noParent, &slider);
+    maxPedalDeadbandSliderID = ESPUI.addControl(ControlType::Slider, "Max Pedal Deadband", "1023", ControlColor::Alizarin, Control::noParent, &slider);
+
+    //TODO finish the sliders
+
+    // ESPUI.addControl(ControlType::Slider, "Slider two", "100", ControlColor::Alizarin, Control::noParent, &slider);
+    // ESPUI.addControl(ControlType::Number, "Number:", "50", ControlColor::Alizarin, Control::noParent, &numberCall);
 
     /*
      * .begin loads and serves all files from PROGMEM directly.
@@ -356,9 +388,9 @@ void loop(void)
 
     if (millis() - oldTime > 5000)
     {
-        ESPUI.updateControlValue(millisLabelId, String(millis()));
+        //ESPUI.updateControlValue(dutyCycleOutLabelId, String(millis()));
         testSwitchState = !testSwitchState;
-        ESPUI.updateControlValue(switchOne, testSwitchState ? "1" : "0");
+        ESPUI.updateControlValue(burnEEPROMswitchID, testSwitchState ? "1" : "0");
 
         oldTime = millis();
     }
