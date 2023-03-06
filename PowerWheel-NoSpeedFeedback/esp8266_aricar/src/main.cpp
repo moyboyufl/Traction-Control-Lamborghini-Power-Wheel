@@ -1,4 +1,3 @@
-// test laptop commit
 #include <DNSServer.h>
 #include <ESPUI.h>
 #include <TaskScheduler.h>
@@ -33,29 +32,50 @@ const char* hostname = "espui";
 //uint16_t status;
 //uint16_t button1;
 uint16_t minDutyCycleSliderID,maxDutyCycleSliderID, minPedalReadSliderID, maxPedalReadSliderID,
-    minPedalDeadbandSliderID, maxPedalDeadbandSliderID;
+    minPedalDeadbandSliderID, maxPedalDeadbandSliderID, DC_STEPSliderID;
 uint16_t dutyCycleOutLabelId;
 uint16_t burnEEPROMswitchID;
 
 //Motor Control
 int pedalValue = 0;
-uint8_t DutyCycle = 0;
+uint16_t DutyCycle = 0;
 
 //eeprom token
 uint8_t eepromKey = EEPROM_KEY;
 
-// Default EEPROM settings if not changed
+// Default EEPROM settings if not set
 struct {
-    uint8_t DC_STEP = 10;       //  PWM motor output Duty Cycle increment in 0-1023 per 5Hz cycle (200ms)
-    uint8_t minDutyCycle = 0;   //  Min PWM motor output Duty Cycle 0-1023
-    uint8_t maxDutyCycle = 50;  //  Max PWM motor Duty Cycle 0-1023
-    uint8_t minPedalRead = 0;       // analogRead from pedal at idle 0-1023
-    uint8_t maxPedalRead = 1023;    // analogRead from pedal at full throttle 0-1023
-    uint8_t minPedalDeadband = 50;  // Deadband from min pedal reading to stay at idle
-    uint8_t maxPedalDeadband = 50;  // Deadband from max pedal reading to stay at full throttle
+    uint16_t DC_STEP = 10;       //  PWM motor output Duty Cycle increment in 0-1023 per 5Hz cycle (200ms)
+    uint16_t minDutyCycle = 0;   //  Min PWM motor output Duty Cycle 0-1023
+    uint16_t maxDutyCycle = 50;  //  Max PWM motor Duty Cycle 0-1023
+    uint16_t minPedalRead = 0;       // analogRead from pedal at idle 0-1023
+    uint16_t maxPedalRead = 1023;    // analogRead from pedal at full throttle 0-1023
+    uint16_t minPedalDeadband = 50;  // Deadband from min pedal reading to stay at idle
+    uint16_t maxPedalDeadband = 50;  // Deadband from max pedal reading to stay at full throttle
 } settings;
 
+void serialPrintSettings()
+{
+
+  //    print eeprom settings
+  Serial.print("\nDC_STEP = ");
+  Serial.println(settings.DC_STEP);
+  Serial.print("minDutyCycle = ");
+  Serial.println(settings.minDutyCycle);
+  Serial.print("maxDutyCycle = ");
+  Serial.println(settings.maxDutyCycle);
+  Serial.print("minPedalRead = ");
+  Serial.println(settings.minPedalRead);
+  Serial.print("maxPedalRead = ");
+  Serial.println(settings.maxPedalRead);
+  Serial.print("minPedalDeadband = ");
+  Serial.println(settings.minPedalDeadband);
+  Serial.print("maxPedalDeadband = ");
+  Serial.println(settings.maxPedalDeadband);
+}
+
 //setup task scheduler
+void task5HzCallback(); // prototype
 Task task5Hz(200, TASK_FOREVER, &task5HzCallback);
 Scheduler task;
 
@@ -243,22 +263,33 @@ void otherSwitchExample(Control* sender, int value)
 
 void setup(void)
 {
+  Serial.begin(115200);
+
+  Serial.println("Before EEPROM checking");
+  serialPrintSettings();
+
   //get settings
   EEPROM.begin(sizeof(eepromKey)+sizeof(settings));
   eepromKey = EEPROM.read(0);
   
   if(eepromKey != EEPROM_KEY)
   {
+    Serial.println("\n\nWriting settings into EEPROM");
     eepromKey = EEPROM_KEY;
     EEPROM.write(0, eepromKey);
     EEPROM.put(1, settings);
     EEPROM.commit();
   }
-  
-  EEPROM.get(1, settings); // load current EEPROM values into struct settings
-  
-  ESPUI.setVerbosity(Verbosity::VerboseJSON);
-    Serial.begin(115200);
+  else{
+    Serial.println("\n\nReading EEPROM into settings");
+    EEPROM.get(1, settings); // load current EEPROM values into struct settings
+  }
+
+  Serial.println("After EEPROM checking");
+  serialPrintSettings();
+
+  ESPUI.setVerbosity(Verbosity::Verbose);
+    //Serial.begin(115200);
 
 #if defined(ESP32)
     WiFi.setHostname(hostname);
@@ -346,14 +377,34 @@ void setup(void)
         ControlType::Switcher, "Burn EEPROM", "", ControlColor::Carrot, Control::noParent, &switchExample);
     // ESPUI.addControl(
     //     ControlType::Switcher, "Switch two", "", ControlColor::None, Control::noParent, &otherSwitchExample);
-    minDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Min Output Duty Cycle", "1023", ControlColor::Peterriver, Control::noParent, &slider);
-    maxDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Max Output Duty Cycle", "1023", ControlColor::Alizarin, Control::noParent, &slider);
+    minDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Min Output Duty Cycle", String(settings.minDutyCycle),
+        ControlColor::Peterriver, Control::noParent, &slider);
+    ESPUI.addControl(Min, "", "0", None, minDutyCycleSliderID);
+	ESPUI.addControl(Max, "", "1023", None, minDutyCycleSliderID);
 
-    minPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Reading", "1023", ControlColor::Peterriver, Control::noParent, &slider);
-    minPedalDeadbandSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Deadband", "1023", ControlColor::Peterriver, Control::noParent, &slider);
+    maxDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Max Output Duty Cycle", String(settings.maxDutyCycle),
+        ControlColor::Alizarin, Control::noParent, &slider);
+    ESPUI.addControl(Min, "", "0", None, maxDutyCycleSliderID);
+	ESPUI.addControl(Max, "", "1023", None, maxDutyCycleSliderID);
 
-    maxPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Max Pedal Reading", "1023", ControlColor::Alizarin, Control::noParent, &slider);
-    maxPedalDeadbandSliderID = ESPUI.addControl(ControlType::Slider, "Max Pedal Deadband", "1023", ControlColor::Alizarin, Control::noParent, &slider);
+    minPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Reading", String(settings.minPedalRead),
+        ControlColor::Peterriver, Control::noParent, &slider);
+    ESPUI.addControl(Min, "", "0", None, minPedalReadSliderID);
+	ESPUI.addControl(Max, "", "1023", None, minPedalReadSliderID);
+
+    minPedalDeadbandSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Deadband", String(settings.minPedalDeadband),
+        ControlColor::Peterriver, Control::noParent, &slider);
+    ESPUI.addControl(Min, "", "0", None, minPedalDeadbandSliderID);
+	ESPUI.addControl(Max, "", "1023", None, minPedalDeadbandSliderID);
+
+    maxPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Max Pedal Reading", "1023",
+        ControlColor::Alizarin, Control::noParent, &slider);
+
+    maxPedalDeadbandSliderID = ESPUI.addControl(ControlType::Slider, "Max Pedal Deadband", "1023",
+        ControlColor::Alizarin, Control::noParent, &slider);
+
+    DC_STEPSliderID = ESPUI.addControl(ControlType::Slider, "Acceleration Step/sec", "1023",
+        ControlColor::Peterriver, Control::noParent, &slider);
 
     //TODO finish the sliders
 
