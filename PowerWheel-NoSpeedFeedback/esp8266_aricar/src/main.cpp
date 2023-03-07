@@ -163,6 +163,26 @@ void slider(Control* sender, int type)
     {
         settings.maxDutyCycle = sender->value.toInt();
     }
+    else if (sender->id == minPedalReadSliderID)
+    {
+        settings.minPedalRead = sender->value.toInt();
+    }
+    else if (sender->id == maxPedalReadSliderID)
+    {
+        settings.maxPedalRead = sender->value.toInt();
+    }
+    else if (sender->id == minPedalDeadbandSliderID)
+    {
+        settings.minPedalDeadband = sender->value.toInt();
+    }
+    else if (sender->id == maxPedalDeadbandSliderID)
+    {
+        settings.maxPedalDeadband = sender->value.toInt();
+    }
+    else if (sender->id == DC_STEPSliderID)
+    {
+        settings.DC_STEP = sender->value.toInt();
+    }
     //TODO finish all sliders
 }
 
@@ -271,6 +291,27 @@ void overrideSwitchCallback(Control* sender, int value)
     Serial.println(sender->id);
 }
 
+void burnEEPROMSwitchCallback(Control* sender, int value)
+{
+    switch (value)
+    {
+    case S_ACTIVE:
+        Serial.print("Active:");
+        // Burn EEPROM
+        burnEEPROMsettings();
+        // reset burnEEPROMSwitch to OFF
+        ESPUI.updateControlValue(burnEEPROMSwitchID, String(S_INACTIVE));
+
+        break;
+
+    case S_INACTIVE:
+        Serial.print("Inactive");
+        break;
+    }
+
+    Serial.print(" ");
+    Serial.println(sender->id);
+}
 // void selectExample(Control* sender, int value)
 // {
 //     Serial.print("Select: ID: ");
@@ -296,6 +337,15 @@ void overrideSwitchCallback(Control* sender, int value)
 //     Serial.println(sender->id);
 // }
 
+void burnEEPROMsettings()
+{
+    Serial.println("\n\nWriting settings into EEPROM");
+    eepromKey = EEPROM_KEY;
+    EEPROM.write(0, eepromKey);
+    EEPROM.put(1, settings);
+    EEPROM.commit();
+}
+
 void setup(void)
 {
   Serial.begin(115200);
@@ -309,11 +359,12 @@ void setup(void)
   
   if(eepromKey != EEPROM_KEY)
   {
-    Serial.println("\n\nWriting settings into EEPROM");
-    eepromKey = EEPROM_KEY;
-    EEPROM.write(0, eepromKey);
-    EEPROM.put(1, settings);
-    EEPROM.commit();
+    burnEEPROMsettings();
+    // Serial.println("\n\nWriting settings into EEPROM");
+    // eepromKey = EEPROM_KEY;
+    // EEPROM.write(0, eepromKey);
+    // EEPROM.put(1, settings);
+    // EEPROM.commit();
   }
   else{
     Serial.println("\n\nReading EEPROM into settings");
@@ -436,10 +487,9 @@ void setup(void)
 	ESPUI.addControl(Max, "", "1023", None, DC_STEPSliderID);
 
     burnEEPROMSwitchID = ESPUI.addControl(ControlType::Switcher, "Burn EEPROM", "", ControlColor::Carrot,
-        Control::noParent, &overrideSwitchCallback);
+        Control::noParent, &burnEEPROMSwitchCallback);
 
 
-    //TODO finish the sliders
 
     // ESPUI.addControl(ControlType::Slider, "Slider two", "100", ControlColor::Alizarin, Control::noParent, &slider);
     // ESPUI.addControl(ControlType::Number, "Number:", "50", ControlColor::Alizarin, Control::noParent, &numberCall);
