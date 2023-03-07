@@ -42,7 +42,7 @@ bool throttleOverrideFlag = false;  // global that follows the switch
 //Motor Control
 int pedalValue = 0;
 int overrideThrottle = 0;
-uint16_t DutyCycle = 0;
+int DutyCycle = 0;
 
 //eeprom token
 uint8_t eepromKey = EEPROM_KEY;
@@ -109,6 +109,9 @@ void task5HzCallback()
     throttleCmd = pedalValue;
   }
   
+    Serial.print("throttleCmd = ");
+    Serial.println(String(throttleCmd));
+
   if (throttleCmd > DutyCycle)
   {
      // Acceleration
@@ -120,15 +123,26 @@ void task5HzCallback()
     DutyCycle -= settings.DC_STEP;
   }
 
+    Serial.print("DutyCycle = ");
+    Serial.println(String(DutyCycle));
 
   DutyCycle = constrain(DutyCycle, settings.minDutyCycle, settings.maxDutyCycle);
-  ESPUI.updateControlValue(dutyCycleOutLabelID, String(DutyCycle));
+  ESPUI.print(dutyCycleOutLabelID, String(DutyCycle));
 
   analogWrite(MOTOR_REV_OUT,0);     //  when one pin is PWMing the other needs to be low otherwise damage
   analogWrite(MOTOR_FWD_OUT, DutyCycle);
 
   digitalWrite(MOTOR_FWD_LED_OUT, HIGH);
   digitalWrite(MOTOR_REV_LED_OUT, LOW);
+}
+
+void burnEEPROMsettings()
+{
+    Serial.println("\n\nWriting settings into EEPROM");
+    eepromKey = EEPROM_KEY;
+    EEPROM.write(0, eepromKey);
+    EEPROM.put(1, settings);
+    EEPROM.commit();
 }
 
 // void numberCall(Control* sender, int type)
@@ -283,12 +297,15 @@ void overrideSwitchCallback(Control* sender, int value)
 
     case S_INACTIVE:
         throttleOverrideFlag = false;
-        Serial.print("Inactive");
+        Serial.print("Inactive:");
         break;
     }
 
     Serial.print(" ");
     Serial.println(sender->id);
+
+    Serial.print("throttleOverrideFlag = ");
+    Serial.println(String(throttleOverrideFlag));
 }
 
 void burnEEPROMSwitchCallback(Control* sender, int value)
@@ -300,7 +317,7 @@ void burnEEPROMSwitchCallback(Control* sender, int value)
         // Burn EEPROM
         burnEEPROMsettings();
         // reset burnEEPROMSwitch to OFF
-        ESPUI.updateControlValue(burnEEPROMSwitchID, String(S_INACTIVE));
+        ESPUI.updateControlValue(burnEEPROMSwitchID, "0");
 
         break;
 
@@ -336,15 +353,6 @@ void burnEEPROMSwitchCallback(Control* sender, int value)
 //     Serial.print(" ");
 //     Serial.println(sender->id);
 // }
-
-void burnEEPROMsettings()
-{
-    Serial.println("\n\nWriting settings into EEPROM");
-    eepromKey = EEPROM_KEY;
-    EEPROM.write(0, eepromKey);
-    EEPROM.put(1, settings);
-    EEPROM.commit();
-}
 
 void setup(void)
 {
@@ -512,11 +520,17 @@ void setup(void)
      */
 
     ESPUI.begin("ESPUI Control");
+
+    //  start scheduled task
+    task.init();
+    task.addTask(task5Hz);
+    task5Hz.enable();
 }
 
 void loop(void)
 {
     dnsServer.processNextRequest();
+    task.execute();
 
     // static long oldTime = 0;
     // static bool testSwitchState = false;
