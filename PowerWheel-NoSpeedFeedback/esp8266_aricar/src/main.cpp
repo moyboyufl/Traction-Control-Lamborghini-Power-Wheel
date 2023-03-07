@@ -115,12 +115,14 @@ void task5HzCallback()
   if (throttleCmd > DutyCycle)
   {
      // Acceleration
-    DutyCycle += settings.DC_STEP;
+    //DutyCycle += settings.DC_STEP;
+    DutyCycle = min(throttleCmd,DutyCycle + settings.DC_STEP);
   }
   else if (throttleCmd < DutyCycle)
   {
     // Decelleration
-    DutyCycle -= settings.DC_STEP;
+    //DutyCycle -= settings.DC_STEP;
+    DutyCycle = max(throttleCmd,DutyCycle - settings.DC_STEP);
   }
 
     Serial.print("DutyCycle = ");
@@ -197,7 +199,6 @@ void slider(Control* sender, int type)
     {
         settings.DC_STEP = sender->value.toInt();
     }
-    //TODO finish all sliders
 }
 
 // void buttonCallback(Control* sender, int type)
@@ -446,6 +447,9 @@ void setup(void)
     Serial.print("IP address: ");
     Serial.println(WiFi.getMode() == WIFI_AP ? WiFi.softAPIP() : WiFi.localIP());
 
+
+    Serial.println("\n\nGenerating GUI");
+
     //  setup UI
     pedalReadLabelID = ESPUI.addControl(ControlType::Label, "Pedal AI (0-1023):", "0", ControlColor::Emerald, Control::noParent);
     
@@ -520,6 +524,8 @@ void setup(void)
      */
 
     ESPUI.begin("ESPUI Control");
+
+    Serial.println("\n\nStarting interrupt scheduler");
 
     //  start scheduled task
     task.init();
