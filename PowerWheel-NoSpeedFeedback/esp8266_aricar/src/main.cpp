@@ -36,8 +36,12 @@ uint16_t overrideThrottleSliderID, minDutyCycleSliderID,maxDutyCycleSliderID, mi
 uint16_t pedalReadLabelID, dutyCycleOutLabelID;
 uint16_t overrideThrottleSwitchID, burnEEPROMSwitchID;
 
+//  globals holding non-EEPROM ui control values
+bool throttleOverrideFlag = false;  // global that follows the switch
+
 //Motor Control
 int pedalValue = 0;
+int overrideThrottle = 0;
 uint16_t DutyCycle = 0;
 
 //eeprom token
@@ -83,6 +87,8 @@ Scheduler task;
 void task5HzCallback()
 
 {
+  int throttleCmd = 0;  // Holder for throttle to command to AO
+  
   pedalValue = analogRead(pedalAnalogPin);
 
   // map pedalValue from actual HW range of pedal plus deadbands to full 10 bit range
@@ -90,12 +96,25 @@ void task5HzCallback()
   pedalValue = constrain(map(pedalValue, (settings.minPedalRead + settings.minPedalDeadband),
     (settings.maxPedalRead + settings.maxPedalDeadband), 0, 1023), 0, 1023);
   
-  if (pedalValue > DutyCycle)
+  // Update UI element got pedal reading
+  ESPUI.print(pedalReadLabelID, String(pedalValue));
+
+  //    If override switched use overide slider, else use pedal
+  if (throttleOverrideFlag == true) //override switch is on
+  {
+    throttleCmd = overrideThrottle;
+  }
+  else // Override switch is off
+  {
+    throttleCmd = pedalValue;
+  }
+  
+  if (throttleCmd > DutyCycle)
   {
      // Acceleration
     DutyCycle += settings.DC_STEP;
   }
-  else if (pedalValue < DutyCycle)
+  else if (throttleCmd < DutyCycle)
   {
     // Decelleration
     DutyCycle -= settings.DC_STEP;
@@ -112,18 +131,18 @@ void task5HzCallback()
   digitalWrite(MOTOR_REV_LED_OUT, LOW);
 }
 
-void numberCall(Control* sender, int type)
-{
-    Serial.println(sender->value);
-}
+// void numberCall(Control* sender, int type)
+// {
+//     Serial.println(sender->value);
+// }
 
-void textCall(Control* sender, int type)
-{
-    Serial.print("Text: ID: ");
-    Serial.print(sender->id);
-    Serial.print(", Value: ");
-    Serial.println(sender->value);
-}
+// void textCall(Control* sender, int type)
+// {
+//     Serial.print("Text: ID: ");
+//     Serial.print(sender->id);
+//     Serial.print(", Value: ");
+//     Serial.println(sender->value);
+// }
 
 void slider(Control* sender, int type)
 {
@@ -131,21 +150,35 @@ void slider(Control* sender, int type)
     Serial.print(sender->id);
     Serial.print(", Value: ");
     Serial.println(sender->value);
-}
 
-void buttonCallback(Control* sender, int type)
-{
-    switch (type)
+    if (sender->id == overrideThrottleSliderID)
     {
-    case B_DOWN:
-        Serial.println("Button DOWN");
-        break;
-
-    case B_UP:
-        Serial.println("Button UP");
-        break;
+        overrideThrottle = sender->value.toInt();
     }
+    else if (sender->id == minDutyCycleSliderID)
+    {
+        settings.minDutyCycle = sender->value.toInt();
+    }
+    else if (sender->id == maxDutyCycleSliderID)
+    {
+        settings.maxDutyCycle = sender->value.toInt();
+    }
+    //TODO finish all sliders
 }
+
+// void buttonCallback(Control* sender, int type)
+// {
+//     switch (type)
+//     {
+//     case B_DOWN:
+//         Serial.println("Button DOWN");
+//         break;
+
+//     case B_UP:
+//         Serial.println("Button UP");
+//         break;
+//     }
+// }
 
 // void buttonExample(Control* sender, int type, void* param)
 // {
@@ -170,64 +203,66 @@ void buttonCallback(Control* sender, int type)
 //     }
 // }
 
-void padExample(Control* sender, int value)
-{
-    switch (value)
-    {
-    case P_LEFT_DOWN:
-        Serial.print("left down");
-        break;
+// void padExample(Control* sender, int value)
+// {
+//     switch (value)
+//     {
+//     case P_LEFT_DOWN:
+//         Serial.print("left down");
+//         break;
 
-    case P_LEFT_UP:
-        Serial.print("left up");
-        break;
+//     case P_LEFT_UP:
+//         Serial.print("left up");
+//         break;
 
-    case P_RIGHT_DOWN:
-        Serial.print("right down");
-        break;
+//     case P_RIGHT_DOWN:
+//         Serial.print("right down");
+//         break;
 
-    case P_RIGHT_UP:
-        Serial.print("right up");
-        break;
+//     case P_RIGHT_UP:
+//         Serial.print("right up");
+//         break;
 
-    case P_FOR_DOWN:
-        Serial.print("for down");
-        break;
+//     case P_FOR_DOWN:
+//         Serial.print("for down");
+//         break;
 
-    case P_FOR_UP:
-        Serial.print("for up");
-        break;
+//     case P_FOR_UP:
+//         Serial.print("for up");
+//         break;
 
-    case P_BACK_DOWN:
-        Serial.print("back down");
-        break;
+//     case P_BACK_DOWN:
+//         Serial.print("back down");
+//         break;
 
-    case P_BACK_UP:
-        Serial.print("back up");
-        break;
+//     case P_BACK_UP:
+//         Serial.print("back up");
+//         break;
 
-    case P_CENTER_DOWN:
-        Serial.print("center down");
-        break;
+//     case P_CENTER_DOWN:
+//         Serial.print("center down");
+//         break;
 
-    case P_CENTER_UP:
-        Serial.print("center up");
-        break;
-    }
+//     case P_CENTER_UP:
+//         Serial.print("center up");
+//         break;
+//     }
 
-    Serial.print(" ");
-    Serial.println(sender->id);
-}
+//     Serial.print(" ");
+//     Serial.println(sender->id);
+// }
 
-void switchExample(Control* sender, int value)
+void overrideSwitchCallback(Control* sender, int value)
 {
     switch (value)
     {
     case S_ACTIVE:
+        throttleOverrideFlag = true;
         Serial.print("Active:");
         break;
 
     case S_INACTIVE:
+        throttleOverrideFlag = false;
         Serial.print("Inactive");
         break;
     }
@@ -236,30 +271,30 @@ void switchExample(Control* sender, int value)
     Serial.println(sender->id);
 }
 
-void selectExample(Control* sender, int value)
-{
-    Serial.print("Select: ID: ");
-    Serial.print(sender->id);
-    Serial.print(", Value: ");
-    Serial.println(sender->value);
-}
+// void selectExample(Control* sender, int value)
+// {
+//     Serial.print("Select: ID: ");
+//     Serial.print(sender->id);
+//     Serial.print(", Value: ");
+//     Serial.println(sender->value);
+// }
 
-void otherSwitchExample(Control* sender, int value)
-{
-    switch (value)
-    {
-    case S_ACTIVE:
-        Serial.print("Active:");
-        break;
+// void otherSwitchExample(Control* sender, int value)
+// {
+//     switch (value)
+//     {
+//     case S_ACTIVE:
+//         Serial.print("Active:");
+//         break;
 
-    case S_INACTIVE:
-        Serial.print("Inactive");
-        break;
-    }
+//     case S_INACTIVE:
+//         Serial.print("Inactive");
+//         break;
+//     }
 
-    Serial.print(" ");
-    Serial.println(sender->id);
-}
+//     Serial.print(" ");
+//     Serial.println(sender->id);
+// }
 
 void setup(void)
 {
@@ -363,7 +398,7 @@ void setup(void)
 	ESPUI.addControl(Max, "", "1023", None, overrideThrottleSliderID);
 
     overrideThrottleSwitchID = ESPUI.addControl(ControlType::Switcher, "Override Throttle", "", ControlColor::Carrot,
-        Control::noParent, &switchExample);
+        Control::noParent, &overrideSwitchCallback);
     
     minDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Min Output Duty Cycle", String(settings.minDutyCycle),
         ControlColor::Peterriver, Control::noParent, &slider);
@@ -401,7 +436,7 @@ void setup(void)
 	ESPUI.addControl(Max, "", "1023", None, DC_STEPSliderID);
 
     burnEEPROMSwitchID = ESPUI.addControl(ControlType::Switcher, "Burn EEPROM", "", ControlColor::Carrot,
-        Control::noParent, &switchExample);
+        Control::noParent, &overrideSwitchCallback);
 
 
     //TODO finish the sliders
@@ -433,15 +468,15 @@ void loop(void)
 {
     dnsServer.processNextRequest();
 
-    static long oldTime = 0;
-    static bool testSwitchState = false;
+    // static long oldTime = 0;
+    // static bool testSwitchState = false;
 
-    if (millis() - oldTime > 5000)
-    {
-        //ESPUI.updateControlValue(dutyCycleOutLabelId, String(millis()));
-        testSwitchState = !testSwitchState;
-        ESPUI.updateControlValue(burnEEPROMSwitchID, testSwitchState ? "1" : "0");
+    // if (millis() - oldTime > 5000)
+    // {
+    //     //ESPUI.updateControlValue(dutyCycleOutLabelId, String(millis()));
+    //     testSwitchState = !testSwitchState;
+    //     ESPUI.updateControlValue(burnEEPROMSwitchID, testSwitchState ? "1" : "0");
 
-        oldTime = millis();
-    }
+    //     oldTime = millis();
+    // }
 }
