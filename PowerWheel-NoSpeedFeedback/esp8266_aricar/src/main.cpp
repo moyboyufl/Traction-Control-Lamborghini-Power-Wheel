@@ -32,7 +32,8 @@ const char* hostname = "espui";
 //uint16_t status;
 //uint16_t button1;
 uint16_t overrideThrottleSliderID, minDutyCycleSliderID,maxDutyCycleSliderID, minPedalReadSliderID,
-    maxPedalReadSliderID, minPedalDeadbandSliderID, maxPedalDeadbandSliderID, DC_STEPSliderID;
+    maxPedalReadSliderID, minPedalDeadbandSliderID, maxPedalDeadbandSliderID, DC_STEP_accelSliderID,
+    DC_STEP_decelSliderID;
 uint16_t pedalReadLabelID, dutyCycleOutLabelID;
 uint16_t overrideThrottleSwitchID, burnEEPROMSwitchID;
 
@@ -49,7 +50,8 @@ uint8_t eepromKey = EEPROM_KEY;
 
 // Default EEPROM settings if not set
 struct {
-    uint16_t DC_STEP = 10;       //  PWM motor output Duty Cycle increment in 0-1023 per 5Hz cycle (200ms)
+    uint16_t DC_STEP_accel = 10;       //  PWM motor output Duty Cycle accel increment in 0-1023 per 5Hz cycle (200ms)
+    uint16_t DC_STEP_decel = 10;       //  PWM motor output Duty Cycle decel increment in 0-1023 per 5Hz cycle (200ms)
     uint16_t minDutyCycle = 0;   //  Min PWM motor output Duty Cycle 0-1023
     uint16_t maxDutyCycle = 511;  //  Max PWM motor Duty Cycle 0-1023
     uint16_t minPedalRead = 0;       // analogRead from pedal at idle 0-1023
@@ -62,8 +64,10 @@ void serialPrintSettings()
 {
 
   //    print eeprom settings
-  Serial.print("\nDC_STEP = ");
-  Serial.println(settings.DC_STEP);
+  Serial.print("\nDC_STEP_accel = ");
+  Serial.println(settings.DC_STEP_accel);
+  Serial.print("\nDC_STEP_decel = ");
+  Serial.println(settings.DC_STEP_decel);
   Serial.print("minDutyCycle = ");
   Serial.println(settings.minDutyCycle);
   Serial.print("maxDutyCycle = ");
@@ -100,13 +104,14 @@ void task5HzCallback()
   ESPUI.print(pedalReadLabelID, String(pedalValue));
 
   //    If override switched use overide slider, else use pedal
+  //    Need to map 10bit pedal to 8bit PWM
   if (throttleOverrideFlag == true) //override switch is on
   {
-    throttleCmd = overrideThrottle;
+    throttleCmd = map(overrideThrottle,0,1023,0,255);
   }
   else // Override switch is off
   {
-    throttleCmd = pedalValue;
+    throttleCmd = map(pedalValue,0,1023,0,255);
   }
   
     Serial.print("throttleCmd = ");
@@ -116,13 +121,13 @@ void task5HzCallback()
   {
      // Acceleration
     //DutyCycle += settings.DC_STEP;
-    DutyCycle = min(throttleCmd,DutyCycle + settings.DC_STEP);
+    DutyCycle = min(throttleCmd,DutyCycle + settings.DC_STEP_accel);
   }
   else if (throttleCmd < DutyCycle)
   {
     // Decelleration
     //DutyCycle -= settings.DC_STEP;
-    DutyCycle = max(throttleCmd,DutyCycle - settings.DC_STEP);
+    DutyCycle = max(throttleCmd,DutyCycle - settings.DC_STEP_decel);
   }
 
     Serial.print("DutyCycle = ");
@@ -195,9 +200,13 @@ void slider(Control* sender, int type)
     {
         settings.maxPedalDeadband = sender->value.toInt();
     }
-    else if (sender->id == DC_STEPSliderID)
+    else if (sender->id == DC_STEP_accelSliderID)
     {
-        settings.DC_STEP = sender->value.toInt();
+        settings.DC_STEP_accel = sender->value.toInt();
+    }
+    else if (sender->id == DC_STEP_decelSliderID)
+    {
+        settings.DC_STEP_decel = sender->value.toInt();
     }
 }
 
@@ -469,12 +478,12 @@ void setup(void)
     minDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Min Output Duty Cycle", String(settings.minDutyCycle),
         ControlColor::Peterriver, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, minDutyCycleSliderID);
-	ESPUI.addControl(Max, "", "255", None, minDutyCycleSliderID);
+	ESPUI.addControl(Max, "", "63", None, minDutyCycleSliderID);
 
     maxDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Max Output Duty Cycle", String(settings.maxDutyCycle),
         ControlColor::Alizarin, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, maxDutyCycleSliderID);
-	ESPUI.addControl(Max, "", "1023", None, maxDutyCycleSliderID);
+	ESPUI.addControl(Max, "", "255", None, maxDutyCycleSliderID);
 
     minPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Reading", String(settings.minPedalRead),
         ControlColor::Peterriver, Control::noParent, &slider);
@@ -496,10 +505,15 @@ void setup(void)
     ESPUI.addControl(Min, "", "0", None, maxPedalDeadbandSliderID);
 	ESPUI.addControl(Max, "", "511", None, maxPedalDeadbandSliderID);
 
-    DC_STEPSliderID = ESPUI.addControl(ControlType::Slider, "Acceleration Step/200ms", String(settings.DC_STEP),
+    DC_STEP_accelSliderID = ESPUI.addControl(ControlType::Slider, "Acceleration Step/200ms", String(settings.DC_STEP_accel),
         ControlColor::Peterriver, Control::noParent, &slider);
-    ESPUI.addControl(Min, "", "0", None, DC_STEPSliderID);
-	ESPUI.addControl(Max, "", "1023", None, DC_STEPSliderID);
+    ESPUI.addControl(Min, "", "0", None, DC_STEP_accelSliderID);
+	ESPUI.addControl(Max, "", "255", None, DC_STEP_accelSliderID);
+
+    DC_STEP_decelSliderID = ESPUI.addControl(ControlType::Slider, "Deceleration Step/200ms", String(settings.DC_STEP_decel),
+        ControlColor::Peterriver, Control::noParent, &slider);
+    ESPUI.addControl(Min, "", "0", None, DC_STEP_decelSliderID);
+	ESPUI.addControl(Max, "", "255", None, DC_STEP_decelSliderID);
 
     burnEEPROMSwitchID = ESPUI.addControl(ControlType::Switcher, "Burn EEPROM", "", ControlColor::Carrot,
         Control::noParent, &burnEEPROMSwitchCallback);
