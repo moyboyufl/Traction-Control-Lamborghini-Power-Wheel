@@ -9,9 +9,9 @@
 //#define PEDAL_FWD_IN (D2)
 //#define PEDAL_REV_IN (D1)
 #define MOTOR_FWD_OUT (D5)
-#define MOTOR_FWD_LED_OUT (D6)
-#define MOTOR_REV_LED_OUT (D7)
-#define MOTOR_REV_OUT (D8)
+#define MOTOR_REV_OUT (D6)
+#define MOTOR_FWD_LED_OUT (D7)
+#define MOTOR_REV_LED_OUT (D8)
 
 
 const byte DNS_PORT = 53;
@@ -293,6 +293,9 @@ void overrideSwitchCallback(Control* sender, int value)
     {
     case S_ACTIVE:
         throttleOverrideFlag = true;
+        // Set throttle to zero upon initally overriding
+        ESPUI.updateSlider(overrideThrottleSliderID,0);
+        overrideThrottle = 0;
         Serial.print("Active:");
         break;
 
@@ -466,7 +469,7 @@ void setup(void)
     minDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Min Output Duty Cycle", String(settings.minDutyCycle),
         ControlColor::Peterriver, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, minDutyCycleSliderID);
-	ESPUI.addControl(Max, "", "1023", None, minDutyCycleSliderID);
+	ESPUI.addControl(Max, "", "255", None, minDutyCycleSliderID);
 
     maxDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Max Output Duty Cycle", String(settings.maxDutyCycle),
         ControlColor::Alizarin, Control::noParent, &slider);
@@ -476,7 +479,7 @@ void setup(void)
     minPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Reading", String(settings.minPedalRead),
         ControlColor::Peterriver, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, minPedalReadSliderID);
-	ESPUI.addControl(Max, "", "1023", None, minPedalReadSliderID);
+	ESPUI.addControl(Max, "", "511", None, minPedalReadSliderID);
 
     minPedalDeadbandSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Deadband", String(settings.minPedalDeadband),
         ControlColor::Peterriver, Control::noParent, &slider);
@@ -513,7 +516,7 @@ void setup(void)
      */
 
     // Enable this option if you want sliders to be continuous (update during move) and not discrete (update on stop)
-    // ESPUI.sliderContinuous = true;
+    ESPUI.sliderContinuous = true;
 
     /*
      * Optionally you can use HTTP BasicAuth. Keep in mind that this is NOT a
