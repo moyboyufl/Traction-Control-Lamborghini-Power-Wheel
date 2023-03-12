@@ -34,15 +34,17 @@ const char* hostname = "espui";
 uint16_t overrideThrottleSliderID, minDutyCycleSliderID,maxDutyCycleSliderID, minPedalReadSliderID,
     maxPedalReadSliderID, minPedalDeadbandSliderID, maxPedalDeadbandSliderID, DC_STEP_accelSliderID,
     DC_STEP_decelSliderID;
-uint16_t pedalReadLabelID, dutyCycleOutLabelID;
+uint16_t pedalRawLabelID, pedalMappedLabelID, throttleCmdLabelID, dutyCycleOutLabelID;
 uint16_t overrideThrottleSwitchID, burnEEPROMSwitchID;
 
 //  globals holding non-EEPROM ui control values
 bool throttleOverrideFlag = false;  // global that follows the switch
 
 //Motor Control
-int pedalValue = 0;
+int pedalValueRaw = 0; //  raw value read from AI
+int pedalValueMapped = 0;   // pedalValue mapped to actual pedal limits, which maximized dynamic range of pedal
 int overrideThrottle = 0;
+int throttleCmd = 0;  // Holder for throttle to command to AO. global so we can add to UI
 int DutyCycle = 0;
 
 //eeprom token
@@ -91,31 +93,42 @@ Scheduler task;
 void task5HzCallback()
 
 {
-  int throttleCmd = 0;  // Holder for throttle to command to AO
   
-  pedalValue = analogRead(pedalAnalogPin);
+  pedalValueRaw = analogRead(pedalAnalogPin);
+// Update UI element got pedal reading
+  ESPUI.print(pedalRawLabelID, String(pedalValueRaw));
 
   // map pedalValue from actual HW range of pedal plus deadbands to full 10 bit range
   //     then constrain to within 10-bit value
-  pedalValue = constrain(map(pedalValue, (settings.minPedalRead + settings.minPedalDeadband),
-    (settings.maxPedalRead + settings.maxPedalDeadband), 0, 1023), 0, 1023);
-  
+//   pedalValue = constrain(map(pedalValue, (settings.minPedalRead + settings.minPedalDeadband),
+//     (settings.maxPedalRead + settings.maxPedalDeadband), 0, 1023), 0, 1023);
+
+  // map pedalValue from actual HW range of pedal to full 0-1023 range
+  pedalValueMapped = map(pedalValueRaw,settings.minPedalRead,settings.maxPedalRead, 0, 1023);
   // Update UI element got pedal reading
-  ESPUI.print(pedalReadLabelID, String(pedalValue));
+  ESPUI.print(pedalMappedLabelID, String(pedalValueMapped));
+
 
   //    If override switched use overide slider, else use pedal
   //    Need to map 10bit pedal to 8bit PWM
   if (throttleOverrideFlag == true) //override switch is on
   {
-    throttleCmd = map(overrideThrottle,0,1023,0,255);
+    //  expanding mapped from areas by deadband amounts so that those values will be clipped
+    throttleCmd = map(overrideThrottle,0 + settings.minPedalDeadband,1023 - settings.maxPedalDeadband,
+        settings.minDutyCycle,settings.maxDutyCycle);
   }
   else // Override switch is off
   {
-    throttleCmd = map(pedalValue,0,1023,0,255);
+    throttleCmd = map(pedalValueMapped,0 + settings.minPedalDeadband,1023 - settings.maxPedalDeadband,
+        settings.minDutyCycle,settings.maxDutyCycle);
   }
   
+    //clip throttleCmd level to within 0-255
+    throttleCmd = constrain(throttleCmd, settings.minDutyCycle, settings.maxDutyCycle);
+    
     Serial.print("throttleCmd = ");
     Serial.println(String(throttleCmd));
+    ESPUI.print(throttleCmdLabelID, String(throttleCmd));
 
   if (throttleCmd > DutyCycle)
   {
@@ -463,9 +476,10 @@ void setup(void)
     Serial.println("\n\nGenerating GUI");
 
     //  setup UI
-    pedalReadLabelID = ESPUI.addControl(ControlType::Label, "Pedal AI (0-1023):", "0", ControlColor::Emerald, Control::noParent);
-    
-    dutyCycleOutLabelID = ESPUI.addControl(ControlType::Label, "Motor AO (0-1023):", "0", ControlColor::Sunflower, Control::noParent);
+    pedalRawLabelID = ESPUI.addControl(ControlType::Label, "Pedal Raw AI (0-1023):", "0", ControlColor::Emerald, Control::noParent);
+    pedalMappedLabelID = ESPUI.addControl(ControlType::Label, "Pedal Mapped (0-1023):", "0", ControlColor::Wetasphalt, Control::noParent);
+    throttleCmdLabelID = ESPUI.addControl(ControlType::Label, "Throttle Demand (0-255):", "0", ControlColor::Wetasphalt, Control::noParent);
+    dutyCycleOutLabelID = ESPUI.addControl(ControlType::Label, "Motor AO (0-255):", "0", ControlColor::Sunflower, Control::noParent);
     
     overrideThrottleSliderID = ESPUI.addControl(ControlType::Slider, "Override Throttle", "0",
         ControlColor::Emerald, Control::noParent, &slider);
