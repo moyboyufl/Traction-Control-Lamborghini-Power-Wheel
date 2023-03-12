@@ -85,12 +85,12 @@ void serialPrintSettings()
 }
 
 //setup task scheduler
-void task5HzCallback(); // prototype
-Task task5Hz(200, TASK_FOREVER, &task5HzCallback);
+void task10HzCallback(); // prototype
+Task task10Hz(100, TASK_FOREVER, &task10HzCallback);
 Scheduler task;
 
 //Task Scheduler
-void task5HzCallback()
+void task10HzCallback()
 
 {
   
@@ -519,12 +519,12 @@ void setup(void)
     ESPUI.addControl(Min, "", "0", None, maxPedalDeadbandSliderID);
 	ESPUI.addControl(Max, "", "511", None, maxPedalDeadbandSliderID);
 
-    DC_STEP_accelSliderID = ESPUI.addControl(ControlType::Slider, "Acceleration Step/200ms", String(settings.DC_STEP_accel),
+    DC_STEP_accelSliderID = ESPUI.addControl(ControlType::Slider, "Acceleration Step/100ms", String(settings.DC_STEP_accel),
         ControlColor::Peterriver, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, DC_STEP_accelSliderID);
 	ESPUI.addControl(Max, "", "255", None, DC_STEP_accelSliderID);
 
-    DC_STEP_decelSliderID = ESPUI.addControl(ControlType::Slider, "Deceleration Step/200ms", String(settings.DC_STEP_decel),
+    DC_STEP_decelSliderID = ESPUI.addControl(ControlType::Slider, "Deceleration Step/100ms", String(settings.DC_STEP_decel),
         ControlColor::Peterriver, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, DC_STEP_decelSliderID);
 	ESPUI.addControl(Max, "", "255", None, DC_STEP_decelSliderID);
@@ -560,8 +560,8 @@ void setup(void)
 
     //  start scheduled task
     task.init();
-    task.addTask(task5Hz);
-    task5Hz.enable();
+    task.addTask(task10Hz);
+    task10Hz.enable();
 }
 
 void loop(void)
