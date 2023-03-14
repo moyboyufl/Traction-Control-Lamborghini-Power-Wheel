@@ -13,6 +13,9 @@
 #define MOTOR_FWD_LED_OUT (D7)
 #define MOTOR_REV_LED_OUT (D8)
 
+#define FORWARD 1
+#define REVERSE -1
+
 
 const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 4, 1);
@@ -35,10 +38,12 @@ uint16_t overrideThrottleSliderID, minDutyCycleSliderID,maxDutyCycleSliderID, mi
     maxPedalReadSliderID, minPedalDeadbandSliderID, maxPedalDeadbandSliderID, DC_STEP_accelSliderID,
     DC_STEP_decelSliderID;
 uint16_t pedalRawLabelID, pedalMappedLabelID, throttleCmdLabelID, dutyCycleOutLabelID;
-uint16_t overrideThrottleSwitchID, burnEEPROMSwitchID;
+//uint16_t switchPanel;
+uint16_t overrideThrottleSwitchID, throttleDirSwitch, burnEEPROMSwitchID;
 
 //  globals holding non-EEPROM ui control values
 bool throttleOverrideFlag = false;  // global that follows the switch
+int throttleDirection = FORWARD;    // global that stores throttle direction
 
 //Motor Control
 int pedalValueRaw = 0; //  raw value read from AI
@@ -149,11 +154,23 @@ void task10HzCallback()
   DutyCycle = constrain(DutyCycle, settings.minDutyCycle, settings.maxDutyCycle);
   ESPUI.print(dutyCycleOutLabelID, String(DutyCycle));
 
-  analogWrite(MOTOR_REV_OUT,0);     //  when one pin is PWMing the other needs to be low otherwise damage
-  analogWrite(MOTOR_FWD_OUT, DutyCycle);
+  switch (throttleDirection) {
+    case FORWARD:
+        analogWrite(MOTOR_REV_OUT,0);     //  when one pin is PWMing the other needs to be low otherwise damage
+        analogWrite(MOTOR_FWD_OUT, DutyCycle);
 
-  digitalWrite(MOTOR_FWD_LED_OUT, HIGH);
-  digitalWrite(MOTOR_REV_LED_OUT, LOW);
+        digitalWrite(MOTOR_FWD_LED_OUT, HIGH);
+        digitalWrite(MOTOR_REV_LED_OUT, LOW);
+        break;
+    
+    case REVERSE:
+        analogWrite(MOTOR_FWD_OUT,0);     //  when one pin is PWMing the other needs to be low otherwise damage
+        analogWrite(MOTOR_REV_OUT, DutyCycle);
+
+        digitalWrite(MOTOR_REV_LED_OUT, HIGH);
+        digitalWrite(MOTOR_FWD_LED_OUT, LOW);
+        break;
+  }
 }
 
 void burnEEPROMsettings()
@@ -334,6 +351,28 @@ void overrideSwitchCallback(Control* sender, int value)
     Serial.println(String(throttleOverrideFlag));
 }
 
+void directionSwitchCallback(Control* sender, int value)
+{
+    switch (value)
+    {
+    case S_ACTIVE:
+        throttleDirection = REVERSE;    // switch enable is reverse
+        Serial.print("Active:");
+        break;
+
+    case S_INACTIVE:
+        throttleDirection = FORWARD;
+        Serial.print("Inactive:");
+        break;
+    }
+
+    Serial.print(" ");
+    Serial.println(sender->id);
+
+    Serial.print("throttleDirection = ");
+    Serial.println(String(throttleDirection));
+}
+
 void burnEEPROMSwitchCallback(Control* sender, int value)
 {
     switch (value)
@@ -419,18 +458,18 @@ void setup(void)
 
     // try to connect to existing network
     WiFi.begin(ssid, password);
-    Serial.print("\n\nTry to connect to existing network");
+    //Serial.print("\n\nTry to connect to existing network");
 
     {
         uint8_t timeout = 10;
 
         // Wait for connection, 5s timeout
-        do
-        {
-            delay(500);
-            Serial.print(".");
-            timeout--;
-        } while (timeout && WiFi.status() != WL_CONNECTED);
+        // do
+        // {
+        //     delay(500);
+        //     Serial.print(".");
+        //     timeout--;
+        // } while (timeout && WiFi.status() != WL_CONNECTED);
 
         // not connected -> create hotspot
         if (WiFi.status() != WL_CONNECTED)
@@ -486,7 +525,9 @@ void setup(void)
     ESPUI.addControl(Min, "", "0", None, overrideThrottleSliderID);
 	ESPUI.addControl(Max, "", "1023", None, overrideThrottleSliderID);
 
-    overrideThrottleSwitchID = ESPUI.addControl(ControlType::Switcher, "Override Throttle", "", ControlColor::Carrot,
+    throttleDirSwitch = ESPUI.addControl(ControlType::Switcher, "Throttle Direction", "", ControlColor::Dark,
+        Control::noParent, &directionSwitchCallback);
+    overrideThrottleSwitchID = ESPUI.addControl(ControlType::Switcher, "Throttle Override", "", ControlColor::Carrot,
         Control::noParent, &overrideSwitchCallback);
     
     minDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Min Output Duty Cycle", String(settings.minDutyCycle),
