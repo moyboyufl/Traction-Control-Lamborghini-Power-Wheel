@@ -520,13 +520,14 @@ void setup(void)
     throttleCmdLabelID = ESPUI.addControl(ControlType::Label, "Throttle Demand (0-255):", "0", ControlColor::Wetasphalt, Control::noParent);
     dutyCycleOutLabelID = ESPUI.addControl(ControlType::Label, "Motor AO (0-255):", "0", ControlColor::Sunflower, Control::noParent);
     
+    throttleDirSwitch = ESPUI.addControl(ControlType::Switcher, "Throttle Direction", "", ControlColor::Dark,
+        Control::noParent, &directionSwitchCallback);
+        
     overrideThrottleSliderID = ESPUI.addControl(ControlType::Slider, "Override Throttle", "0",
         ControlColor::Emerald, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, overrideThrottleSliderID);
 	ESPUI.addControl(Max, "", "1023", None, overrideThrottleSliderID);
 
-    throttleDirSwitch = ESPUI.addControl(ControlType::Switcher, "Throttle Direction", "", ControlColor::Dark,
-        Control::noParent, &directionSwitchCallback);
     overrideThrottleSwitchID = ESPUI.addControl(ControlType::Switcher, "Throttle Override", "", ControlColor::Carrot,
         Control::noParent, &overrideSwitchCallback);
     
