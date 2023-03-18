@@ -39,7 +39,7 @@ uint16_t overrideThrottleSliderID, minDutyCycleSliderID,maxDutyCycleSliderID, mi
     DC_STEP_decelSliderID;
 uint16_t pedalRawLabelID, pedalMappedLabelID, throttleCmdLabelID, dutyCycleOutLabelID;
 //uint16_t switchPanel;
-uint16_t overrideThrottleSwitchID, throttleDirSwitch, burnEEPROMSwitchID;
+uint16_t overrideThrottleSwitchID, throttleDirSwitch, burnEEPROMSwitchID, loadEEPROMSwitchID;
 
 //  globals holding non-EEPROM ui control values
 bool throttleOverrideFlag = false;  // global that follows the switch
@@ -59,8 +59,9 @@ uint8_t eepromKey = EEPROM_KEY;
 struct {
     uint16_t DC_STEP_accel = 10;       //  PWM motor output Duty Cycle accel increment in 0-1023 per 5Hz cycle (200ms)
     uint16_t DC_STEP_decel = 10;       //  PWM motor output Duty Cycle decel increment in 0-1023 per 5Hz cycle (200ms)
-    uint16_t minDutyCycle = 0;   //  Min PWM motor output Duty Cycle 0-1023
-    uint16_t maxDutyCycle = 511;  //  Max PWM motor Duty Cycle 0-1023
+    uint16_t minDutyCycle = 0;   //  Min PWM motor output Duty Cycle 0-1023 
+                                //  (will only send PWM once reaches this value to avoid stalling so much)
+    uint16_t maxDutyCycle = 511;  //  Max PWM motor Duty Cycle 0-1023 (speed control)
     uint16_t minPedalRead = 0;       // analogRead from pedal at idle 0-1023
     uint16_t maxPedalRead = 1023;    // analogRead from pedal at full throttle 0-1023
     uint16_t minPedalDeadband = 50;  // Deadband from min pedal reading to stay at idle
@@ -129,8 +130,10 @@ void task10HzCallback()
   }
   
     //clip throttleCmd level to within 0-255
-    throttleCmd = constrain(throttleCmd, settings.minDutyCycle, settings.maxDutyCycle);
-    
+    throttleCmd = constrain(throttleCmd, 0, settings.maxDutyCycle);
+    // clip any speed below minDutCycle to zero
+    if (throttleCmd < settings.minDutyCycle) {throttleCmd = 0;}
+        
     Serial.print("throttleCmd = ");
     Serial.println(String(throttleCmd));
     ESPUI.print(throttleCmdLabelID, String(throttleCmd));
@@ -151,7 +154,7 @@ void task10HzCallback()
     Serial.print("DutyCycle = ");
     Serial.println(String(DutyCycle));
 
-  DutyCycle = constrain(DutyCycle, settings.minDutyCycle, settings.maxDutyCycle);
+  DutyCycle = constrain(DutyCycle, 0, settings.maxDutyCycle);
   ESPUI.print(dutyCycleOutLabelID, String(DutyCycle));
 
   switch (throttleDirection) {
@@ -180,6 +183,14 @@ void burnEEPROMsettings()
     EEPROM.write(0, eepromKey);
     EEPROM.put(1, settings);
     EEPROM.commit();
+    serialPrintSettings();
+}
+
+void loadEEPROMsettings()
+{
+    Serial.println("\n\nReading EEPROM into settings");
+    EEPROM.get(1, settings); // load current EEPROM values into struct settings
+    serialPrintSettings();
 }
 
 // void numberCall(Control* sender, int type)
@@ -373,6 +384,18 @@ void directionSwitchCallback(Control* sender, int value)
     Serial.println(String(throttleDirection));
 }
 
+void refreshEEPROMsliders()
+{
+    ESPUI.updateSlider(DC_STEP_accelSliderID,settings.DC_STEP_accel);
+    ESPUI.updateSlider(DC_STEP_decelSliderID,settings.DC_STEP_decel);
+    ESPUI.updateSlider(minDutyCycleSliderID,settings.minDutyCycle);
+    ESPUI.updateSlider(maxDutyCycleSliderID,settings.maxDutyCycle);
+    ESPUI.updateSlider(minPedalReadSliderID,settings.minPedalRead);
+    ESPUI.updateSlider(maxPedalReadSliderID,settings.maxPedalRead);
+    ESPUI.updateSlider(minPedalDeadbandSliderID,settings.minPedalDeadband);
+    ESPUI.updateSlider(maxPedalDeadbandSliderID,settings.maxPedalDeadband);
+}
+
 void burnEEPROMSwitchCallback(Control* sender, int value)
 {
     switch (value)
@@ -384,6 +407,30 @@ void burnEEPROMSwitchCallback(Control* sender, int value)
         // reset burnEEPROMSwitch to OFF
         ESPUI.updateControlValue(burnEEPROMSwitchID, "0");
 
+        break;
+
+    case S_INACTIVE:
+        Serial.print("Inactive");
+        break;
+    }
+
+    Serial.print(" ");
+    Serial.println(sender->id);
+}
+
+void loadEEPROMSwitchCallback(Control* sender, int value)
+{
+    switch (value)
+    {
+    case S_ACTIVE:
+        Serial.print("Active:");
+        // Load EEPROM
+        loadEEPROMsettings();
+        // reset loadEEPROMSwitch to OFF
+        ESPUI.updateControlValue(loadEEPROMSwitchID, "0");
+
+        // refresh EEPROM UI sliders with eeprom values
+        refreshEEPROMsliders();
         break;
 
     case S_INACTIVE:
@@ -440,12 +487,11 @@ void setup(void)
     // EEPROM.commit();
   }
   else{
-    Serial.println("\n\nReading EEPROM into settings");
-    EEPROM.get(1, settings); // load current EEPROM values into struct settings
+    loadEEPROMsettings();
   }
 
-  Serial.println("After EEPROM checking");
-  serialPrintSettings();
+  // Serial.println("After EEPROM checking");
+  // serialPrintSettings();
 
   ESPUI.setVerbosity(Verbosity::Verbose);
     //Serial.begin(115200);
@@ -518,7 +564,7 @@ void setup(void)
     pedalRawLabelID = ESPUI.addControl(ControlType::Label, "Pedal Raw AI (0-1023):", "0", ControlColor::Emerald, Control::noParent);
     pedalMappedLabelID = ESPUI.addControl(ControlType::Label, "Pedal Mapped (0-1023):", "0", ControlColor::Wetasphalt, Control::noParent);
     throttleCmdLabelID = ESPUI.addControl(ControlType::Label, "Throttle Demand (0-255):", "0", ControlColor::Wetasphalt, Control::noParent);
-    dutyCycleOutLabelID = ESPUI.addControl(ControlType::Label, "Motor AO (0-255):", "0", ControlColor::Sunflower, Control::noParent);
+    dutyCycleOutLabelID = ESPUI.addControl(ControlType::Label, "Output to Motor AO (0-255):", "0", ControlColor::Sunflower, Control::noParent);
     
     throttleDirSwitch = ESPUI.addControl(ControlType::Switcher, "Throttle Direction", "", ControlColor::Dark,
         Control::noParent, &directionSwitchCallback);
@@ -534,7 +580,7 @@ void setup(void)
     minDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Min Output Duty Cycle", String(settings.minDutyCycle),
         ControlColor::Peterriver, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, minDutyCycleSliderID);
-	ESPUI.addControl(Max, "", "63", None, minDutyCycleSliderID);
+	ESPUI.addControl(Max, "", "127", None, minDutyCycleSliderID);
 
     maxDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Max Output Duty Cycle", String(settings.maxDutyCycle),
         ControlColor::Alizarin, Control::noParent, &slider);
@@ -574,7 +620,8 @@ void setup(void)
     burnEEPROMSwitchID = ESPUI.addControl(ControlType::Switcher, "Burn EEPROM", "", ControlColor::Carrot,
         Control::noParent, &burnEEPROMSwitchCallback);
 
-
+    loadEEPROMSwitchID = ESPUI.addControl(ControlType::Switcher, "Load from EEPROM", "", ControlColor::Dark,
+        Control::noParent, &loadEEPROMSwitchCallback);
 
     // ESPUI.addControl(ControlType::Slider, "Slider two", "100", ControlColor::Alizarin, Control::noParent, &slider);
     // ESPUI.addControl(ControlType::Number, "Number:", "50", ControlColor::Alizarin, Control::noParent, &numberCall);
