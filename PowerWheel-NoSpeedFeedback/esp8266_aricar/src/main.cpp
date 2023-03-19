@@ -16,6 +16,8 @@
 #define FORWARD 1
 #define REVERSE -1
 
+#define PWMFREQ 10000   //  10kHz PWM freq for DC motor (5kHz - 20 kHz)
+
 
 const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 4, 1);
@@ -480,21 +482,13 @@ void setup(void)
   if(eepromKey != EEPROM_KEY)
   {
     burnEEPROMsettings();
-    // Serial.println("\n\nWriting settings into EEPROM");
-    // eepromKey = EEPROM_KEY;
-    // EEPROM.write(0, eepromKey);
-    // EEPROM.put(1, settings);
-    // EEPROM.commit();
+
   }
   else{
     loadEEPROMsettings();
   }
 
-  // Serial.println("After EEPROM checking");
-  // serialPrintSettings();
-
   ESPUI.setVerbosity(Verbosity::Verbose);
-    //Serial.begin(115200);
 
 #if defined(ESP32)
     WiFi.setHostname(hostname);
@@ -646,6 +640,11 @@ void setup(void)
     ESPUI.begin("ESPUI Control");
 
     Serial.println("\n\nStarting interrupt scheduler");
+
+    //  set PWM frequency
+    pinMode(MOTOR_REV_OUT, OUTPUT);
+    pinMode(MOTOR_FWD_OUT, OUTPUT);
+    analogWriteFreq(PWMFREQ);
 
     //  start scheduled task
     task.init();
