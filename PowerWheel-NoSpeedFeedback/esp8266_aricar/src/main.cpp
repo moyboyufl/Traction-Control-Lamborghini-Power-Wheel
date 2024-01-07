@@ -16,7 +16,7 @@
 #define FORWARD 1
 #define REVERSE -1
 
-#define PWMFREQ 10000   //  10kHz PWM freq for DC motor (5kHz - 20 kHz)
+//#define PWMFREQ 5000   //  10kHz PWM freq for DC motor (5kHz - 20 kHz), 1/6/24 changed to 5kHz due to overheating H bridge
 
 
 const byte DNS_PORT = 53;
@@ -38,7 +38,7 @@ const char* hostname = "espui";
 //uint16_t button1;
 uint16_t overrideThrottleSliderID, minDutyCycleSliderID,maxDutyCycleSliderID, minPedalReadSliderID,
     maxPedalReadSliderID, minPedalDeadbandSliderID, maxPedalDeadbandSliderID, DC_STEP_accelSliderID,
-    DC_STEP_decelSliderID;
+    DC_STEP_decelSliderID, PWMFREQSliderID;
 uint16_t pedalRawLabelID, pedalMappedLabelID, throttleCmdLabelID, dutyCycleOutLabelID;
 //uint16_t switchPanel;
 uint16_t overrideThrottleSwitchID, throttleDirSwitch, burnEEPROMSwitchID, loadEEPROMSwitchID;
@@ -68,6 +68,9 @@ struct {
     uint16_t maxPedalRead = 1023;    // analogRead from pedal at full throttle 0-1023
     uint16_t minPedalDeadband = 50;  // Deadband from min pedal reading to stay at idle
     uint16_t maxPedalDeadband = 50;  // Deadband from max pedal reading to stay at full throttle
+
+    uint16_t PWMFREQ = 5000;    //  5kHz PWM freq for DC motor (5kHz - 20 kHz), lower reqs decoupling cap for power supply
+                                //  higher creates more heat in H-bridgw
 } settings;
 
 void serialPrintSettings()
@@ -90,6 +93,8 @@ void serialPrintSettings()
   Serial.println(settings.minPedalDeadband);
   Serial.print("maxPedalDeadband = ");
   Serial.println(settings.maxPedalDeadband);
+  Serial.print("PWMFREQ = ");
+  Serial.println(settings.PWMFREQ);
 }
 
 //setup task scheduler
@@ -251,6 +256,11 @@ void slider(Control* sender, int type)
     {
         settings.DC_STEP_decel = sender->value.toInt();
     }
+    else if (sender->id == PWMFREQSliderID)
+    {
+        settings.PWMFREQ = int((sender->value.toInt()) / 100) * 100;   //  rounds down to nearest 100
+        ESPUI.updateSlider(PWMFREQSliderID,settings.PWMFREQ);
+    }
 }
 
 // void buttonCallback(Control* sender, int type)
@@ -396,6 +406,7 @@ void refreshEEPROMsliders()
     ESPUI.updateSlider(maxPedalReadSliderID,settings.maxPedalRead);
     ESPUI.updateSlider(minPedalDeadbandSliderID,settings.minPedalDeadband);
     ESPUI.updateSlider(maxPedalDeadbandSliderID,settings.maxPedalDeadband);
+    ESPUI.updateSlider(PWMFREQSliderID,settings.PWMFREQ);
 }
 
 void burnEEPROMSwitchCallback(Control* sender, int value)
@@ -611,6 +622,11 @@ void setup(void)
     ESPUI.addControl(Min, "", "0", None, DC_STEP_decelSliderID);
 	ESPUI.addControl(Max, "", "255", None, DC_STEP_decelSliderID);
 
+    PWMFREQSliderID = ESPUI.addControl(ControlType::Slider, "PWM Freq rec 5-20kHz, reboot req'd", String(settings.PWMFREQ),
+        ControlColor::Peterriver, Control::noParent, &slider);
+    ESPUI.addControl(Min, "", "0", None, PWMFREQSliderID);
+	ESPUI.addControl(Max, "", "20000", None, PWMFREQSliderID);
+
     burnEEPROMSwitchID = ESPUI.addControl(ControlType::Switcher, "Burn EEPROM", "", ControlColor::Carrot,
         Control::noParent, &burnEEPROMSwitchCallback);
 
@@ -644,7 +660,7 @@ void setup(void)
     //  set PWM frequency
     pinMode(MOTOR_REV_OUT, OUTPUT);
     pinMode(MOTOR_FWD_OUT, OUTPUT);
-    analogWriteFreq(PWMFREQ);
+    analogWriteFreq(settings.PWMFREQ);
 
     //  start scheduled task
     task.init();
