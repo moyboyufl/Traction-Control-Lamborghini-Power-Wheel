@@ -63,7 +63,7 @@ struct {
     uint16_t DC_STEP_decel = 10;       //  PWM motor output Duty Cycle decel increment in 0-1023 per 5Hz cycle (200ms)
     uint16_t minDutyCycle = 0;   //  Min PWM motor output Duty Cycle 0-1023 
                                 //  (will only send PWM once reaches this value to avoid stalling so much)
-    uint16_t maxDutyCycle = 511;  //  Max PWM motor Duty Cycle 0-1023 (speed control)
+    uint16_t maxDutyCycle = 511;  //  Max PWM motor Duty Cycle 0-1023 (speed control), bts7960 Max duty culture 98%, do not exceed 1002
     uint16_t minPedalRead = 0;       // analogRead from pedal at idle 0-1023
     uint16_t maxPedalRead = 1023;    // analogRead from pedal at full throttle 0-1023
     uint16_t minPedalDeadband = 50;  // Deadband from min pedal reading to stay at idle
@@ -590,7 +590,7 @@ void setup(void)
     maxDutyCycleSliderID = ESPUI.addControl(ControlType::Slider, "Max Output Duty Cycle", String(settings.maxDutyCycle),
         ControlColor::Alizarin, Control::noParent, &slider);
     ESPUI.addControl(Min, "", "0", None, maxDutyCycleSliderID);
-	ESPUI.addControl(Max, "", "255", None, maxDutyCycleSliderID);
+	ESPUI.addControl(Max, "", "249", None, maxDutyCycleSliderID);  // bts7960 Max duty cycle 98% so 255*.98=249
 
     minPedalReadSliderID = ESPUI.addControl(ControlType::Slider, "Min Pedal Reading", String(settings.minPedalRead),
         ControlColor::Peterriver, Control::noParent, &slider);
